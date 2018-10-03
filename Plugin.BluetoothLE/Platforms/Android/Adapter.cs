@@ -32,7 +32,7 @@ namespace Plugin.BluetoothLE
         {
             get
             {
-                if (CrossBleAdapter.IsServerSupported)
+                if (CrossBleAdapter.AndroidConfiguration.IsServerSupported)
                     return AdapterFeatures.All;
 
                 return AdapterFeatures.AllClient | AdapterFeatures.AllControls;
@@ -129,7 +129,7 @@ namespace Plugin.BluetoothLE
         }
 
 
-        public override IGattServer CreateGattServer() => new GattServer();
+        public override IObservable<IGattServer> CreateGattServer() => Observable.Return(new GattServer());
 
 
         public override IObservable<IScanResult> Scan(ScanConfig config)

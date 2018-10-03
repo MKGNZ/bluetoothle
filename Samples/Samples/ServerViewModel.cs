@@ -2,36 +2,33 @@
 using System.Linq;
 using System.Reactive.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Acr.UserDialogs;
 using Plugin.BluetoothLE;
 using Plugin.BluetoothLE.Server;
+using Prism.Navigation;
 using ReactiveUI;
+using ReactiveUI.Fody.Helpers;
 using Samples.Infrastructure;
 using Device = Xamarin.Forms.Device;
 
 
-namespace Samples.Ble
+namespace Samples
 {
     public class ServerViewModel : ViewModel
     {
-        readonly IAdapter adapter;
         readonly IUserDialogs dialogs;
+        IAdapter adapter;
         IDisposable timer;
         IGattServer server;
 
 
-        public ServerViewModel()
+        public ServerViewModel(IUserDialogs dialogs)
         {
-            this.adapter = CrossBleAdapter.Current;
-            this.dialogs = UserDialogs.Instance;
+            this.dialogs = dialogs;
 
-            this.adapter
-                .WhenStatusChanged()
-                .ObserveOn(RxApp.MainThreadScheduler)
-                .Subscribe(x => this.Status = x);
-
-            this.ToggleServer = ReactiveCommand.Create(() =>
+            this.ToggleServer = ReactiveCommand.CreateFromTask(async _ =>
             {
                 if (this.adapter.Status != AdapterStatus.PoweredOn)
                 {
@@ -47,7 +44,7 @@ namespace Samples.Ble
 
                 if (this.server == null)
                 {
-                    this.BuildServer();
+                    await this.BuildServer();
                     this.adapter.Advertiser.Start(new AdvertisementData
                     {
                         LocalName = "My GATT"
@@ -69,56 +66,26 @@ namespace Samples.Ble
         }
 
 
-        string serverText = "Start Server";
-        public string ServerText
+        public override void OnNavigatingTo(NavigationParameters parameters)
         {
-            get => this.serverText;
-            set => this.RaiseAndSetIfChanged(ref this.serverText, value);
+            base.OnNavigatingTo(parameters);
+            this.adapter = parameters.GetValue<IAdapter>("adapter");
         }
 
 
-        string chValue;
-        public string CharacteristicValue
-        {
-            get => this.chValue;
-            set => this.RaiseAndSetIfChanged(ref this.chValue, value);
-        }
-
-
-        string descValue;
-        public string DescriptorValue
-        {
-            get => this.descValue;
-            set => this.RaiseAndSetIfChanged(ref this.descValue, value);
-        }
-
-
-        string output;
-        public string Output
-        {
-            get => this.output;
-            private set => this.RaiseAndSetIfChanged(ref this.output, value);
-        }
-
-
-        AdapterStatus status;
-        public AdapterStatus Status
-        {
-            get => this.status;
-            set => this.RaiseAndSetIfChanged(ref this.status, value);
-        }
-
-
+        [Reactive] public string ServerText { get; set; } = "Start Server";
+        [Reactive] public string CharacteristicValue { get; set; }
+        [Reactive] public string Output { get; private set; }
         public ICommand ToggleServer { get; }
         public ICommand Clear { get; }
 
 
-        void BuildServer()
+        async Task BuildServer()
         {
             try
             {
                 this.OnEvent("GATT Server Starting");
-                this.server = this.adapter.CreateGattServer();
+                this.server = await this.adapter.CreateGattServer();
 
                 var counter = 0;
                 var service = this.server.CreateService(Guid.Parse("A495FF20-C5B1-4B44-B512-1370F02D74DE"), true);

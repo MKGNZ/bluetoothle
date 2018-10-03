@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Windows.Input;
 using Acr.Collections;
@@ -8,44 +9,37 @@ using ReactiveUI;
 using Samples.Infrastructure;
 
 
-namespace Samples.Ble
+namespace Samples
 {
     public class LogViewModel : ViewModel
     {
         readonly ILogService logs;
-        IDisposable logWatch;
 
 
-        public LogViewModel()
+        public LogViewModel(ILogService logs)
         {
-            this.logs = LogService.Instance;
+            this.logs = logs;
             this.Show = ReactiveCommand.Create<LogItem>(item => UserDialogs.Instance.Alert(item.Message));
             this.Clear = ReactiveCommand.Create(this.logs.Clear);
         }
 
 
-        public override void OnActivated()
+        public override void OnAppearing()
         {
-            base.OnActivated();
+            base.OnAppearing();
             var l = this.logs.GetLogs();
             this.Logs.Clear();
 
             if (l.Any())
                 this.Logs.AddRange(l);
 
-            this.logWatch = this.logs
+            this.logs
                 .WhenUpdated()
                 .ObserveOn(RxApp.MainThreadScheduler)
                 .Subscribe(x =>
                     this.Logs.Insert(0, x)
-                );
-        }
-
-
-        public override void OnDeactivated()
-        {
-            base.OnDeactivated();
-            this.logWatch?.Dispose();
+                )
+                .DisposeWith(this.DeactivateWith);
         }
 
 

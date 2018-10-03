@@ -1,63 +1,55 @@
 ﻿using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Windows.Input;
+using Acr.Collections;
 using Acr.UserDialogs;
 using Plugin.BluetoothLE;
+using Prism.Navigation;
 using ReactiveUI;
+using ReactiveUI.Fody.Helpers;
 using Samples.Infrastructure;
 
 
-namespace Samples.Ble
+namespace Samples
 {
     public class ScanViewModel : ViewModel
     {
+        IAdapter adapter;
         IDisposable scan;
 
 
-        public ScanViewModel()
+        public ScanViewModel(INavigationService navigationService, IUserDialogs dialogs)
         {
-            this.Devices = new ObservableCollection<ScanResultViewModel>();
-
-            CrossBleAdapter
-                .Current
-                .WhenStatusChanged()
-                .ObserveOn(RxApp.MainThreadScheduler)
-                .Subscribe(_ => this.RaisePropertyChanged(nameof(this.Title)));
-
-            this.SelectDevice = ReactiveCommand.CreateFromTask<ScanResultViewModel>(async x =>
-            {
-                this.scan?.Dispose();
-                await App.Current.MainPage.Navigation.PushAsync(new DevicePage
-                {
-                    BindingContext = new DeviceViewModel(x.Device)
-                });
-            });
+            this.SelectDevice = ReactiveCommand.CreateFromTask<ScanResultViewModel>(
+                x => navigationService.NavToDevice(x.Device)
+            );
 
             this.OpenSettings = ReactiveCommand.Create(() =>
             {
-                if (CrossBleAdapter.Current.Features.HasFlag(AdapterFeatures.OpenSettings))
+                if (this.adapter.Features.HasFlag(AdapterFeatures.OpenSettings))
                 {
-                    CrossBleAdapter.Current.OpenSettings();
+                    this.adapter.OpenSettings();
                 }
                 else
                 {
-                    UserDialogs.Instance.Alert("Cannot open bluetooth settings");
+                    dialogs.Alert("Cannot open bluetooth settings");
                 }
             });
 
             this.ToggleAdapterState = ReactiveCommand.Create(
                 () =>
                 {
-                    if (CrossBleAdapter.Current.CanControlAdapterState())
+                    if (this.adapter.CanControlAdapterState())
                     {
-                        var poweredOn = CrossBleAdapter.Current.Status == AdapterStatus.PoweredOn;
-                        CrossBleAdapter.Current.SetAdapterState(!poweredOn);
+                        var poweredOn = this.adapter.Status == AdapterStatus.PoweredOn;
+                        this.adapter.SetAdapterState(!poweredOn);
                     }
                     else
                     {
-                        UserDialogs.Instance.Alert("Cannot change bluetooth adapter state");
+                        dialogs.Alert("Cannot change bluetooth adapter state");
                     }
                 }
             );
@@ -75,31 +67,54 @@ namespace Samples.Ble
                         this.Devices.Clear();
 
                         this.IsScanning = true;
-                        this.scan = CrossBleAdapter
-                            .Current
+                        this.scan = this
+                            .adapter
                             .Scan()
                             .Buffer(TimeSpan.FromSeconds(1))
                             .ObserveOn(RxApp.MainThreadScheduler)
-                            .Subscribe(results =>
-                            {
-                                foreach (var result in results)
-                                    this.OnScanResult(result);
-                            });
+                            .Subscribe(
+                                results =>
+                                {
+                                    var list = new List<ScanResultViewModel>();
+                                    foreach (var result in results)
+                                    {
+                                        var dev = this.Devices.FirstOrDefault(x => x.Uuid.Equals(result.Device.Uuid));
+
+                                        if (dev != null)
+                                        {
+                                            dev.TrySet(result);
+                                        }
+                                        else
+                                        {
+                                            dev = new ScanResultViewModel();
+                                            dev.TrySet(result);
+                                            list.Add(dev);
+                                        }
+                                    }
+                                    if (list.Any())
+                                        this.Devices.AddRange(list);
+                                },
+                                ex => dialogs.Alert(ex.ToString(), "ERROR")
+                            )
+                            .DisposeWith(this.DeactivateWith);
                     }
-                },
-                CrossBleAdapter
-                    .Current
-                    .WhenStatusChanged()
-                    .ObserveOn(RxApp.MainThreadScheduler)
-                    .Select(x => x == AdapterStatus.PoweredOn)
+                }
             );
         }
 
 
-        public override void OnDeactivated()
+        public override void OnNavigatingTo(NavigationParameters parameters)
         {
-            base.OnDeactivated();
-            this.scan?.Dispose();
+            base.OnNavigatedTo(parameters);
+            this.adapter = parameters.GetValue<IAdapter>("adapter");
+            this.Title = $"{this.adapter.DeviceName} ({this.adapter.Status})";
+        }
+
+
+        public override void OnAppearing()
+        {
+            base.OnAppearing();
+            this.IsScanning = false;
         }
 
 
@@ -107,33 +122,10 @@ namespace Samples.Ble
         public ICommand OpenSettings { get; }
         public ICommand ToggleAdapterState { get; }
         public ICommand SelectDevice { get; }
-        public ObservableCollection<ScanResultViewModel> Devices { get; }
+        public ObservableList<ScanResultViewModel> Devices { get; } = new ObservableList<ScanResultViewModel>();
 
 
-        public string Title => $"{CrossBleAdapter.Current.DeviceName} ({CrossBleAdapter.Current.Status})";
-
-
-        bool scanning;
-        public bool IsScanning
-        {
-            get => this.scanning;
-            private set => this.RaiseAndSetIfChanged(ref this.scanning, value);
-        }
-
-
-        void OnScanResult(IScanResult result)
-        {
-            var dev = this.Devices.FirstOrDefault(x => x.Uuid.Equals(result.Device.Uuid));
-            if (dev != null)
-            {
-                dev.TrySet(result);
-            }
-            else
-            {
-                dev = new ScanResultViewModel();
-                dev.TrySet(result);
-                this.Devices.Add(dev);
-            }
-        }
+        [Reactive] public string Title { get; private set; }
+        [Reactive] public bool IsScanning { get; private set; }
     }
 }
