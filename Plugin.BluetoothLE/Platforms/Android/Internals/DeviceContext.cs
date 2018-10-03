@@ -13,6 +13,7 @@ using Android.Bluetooth;
 using Android.OS;
 using Java.Lang;
 using Exception = System.Exception;
+using Platform = Acr.Platform;
 
 
 namespace Plugin.BluetoothLE.Internals
@@ -75,7 +76,7 @@ namespace Plugin.BluetoothLE.Internals
                         .ConfigureAwait(false);
                     ob.Respond(result);
                 }
-                catch (System.Exception ex)
+                catch (Exception ex)
                 {
                     ob.OnError(ex);
                 }
@@ -93,24 +94,73 @@ namespace Plugin.BluetoothLE.Internals
         //}
 
 
-        public void InvokeOnMainThread(Action action)
+        public void RefreshServices()
         {
-            if (CrossBleAdapter.ShouldInvokeOnMainThread)
+            if (this.Gatt == null || !CrossBleAdapter.AndroidConfiguration.RefreshServices)
+                return;
+
+            // https://stackoverflow.com/questions/22596951/how-to-programmatically-force-bluetooth-low-energy-service-discovery-on-android
+            try
             {
-                if (Application.SynchronizationContext == SynchronizationContext.Current)
+                Log.Warn(BleLogCategory.Device, "Try to clear Android cache");
+                var method = this.Gatt.Class.GetMethod("refresh");
+                if (method != null)
                 {
-                    action();
-                }
-                else
-                {
-                    Application.SynchronizationContext.Post(_ => action(), null);
+                    var result = (bool)method.Invoke(this.Gatt);
+                    Log.Warn(BleLogCategory.Device, "Cache result = " + result);
                 }
             }
-            else
+            catch (Exception ex)
             {
-                action();
+                Log.Warn(BleLogCategory.Device, "Failed to refresh services - " + ex);
             }
         }
+
+
+        public void InvokeOnMainThread(Action action)
+        {
+            if (CrossBleAdapter.AndroidConfiguration.ShouldInvokeOnMainThread)
+                Platform.Current.InvokeOnMainThread(action);
+            else
+                action();
+        }
+
+        //public IObservable<Unit> InvokeOnMainThread(Action action)
+        //{
+        //    if (!CrossBleAdapter.AndroidConfiguration.ShouldInvokeOnMainThread)
+        //    {
+        //        return Observable.Create<Unit>(ob =>
+        //        {
+        //            try
+        //            {
+        //                action();
+        //                ob.Respond(Unit.Default);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                ob.OnError(ex);
+        //            }
+        //            return Disposable.Empty;
+        //        });
+        //    }
+        //    return Observable.Create<Unit>(ob =>
+        //    {
+        //        Platform.Current.InvokeOnMainThread(() =>
+        //        {
+        //            try
+        //            {
+        //                action();
+        //                ob.Respond(Unit.Default);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                ob.OnError(ex);
+        //            }
+        //        });
+
+        //        return Disposable.Empty;
+        //    });
+        //}
 
 
         public void Close()
@@ -121,7 +171,7 @@ namespace Plugin.BluetoothLE.Internals
                 this.Gatt?.Close();
                 this.Gatt = null;
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 Log.Warn(BleLogCategory.Device, "Unclean disconnect - " + ex);
             }
@@ -137,7 +187,7 @@ namespace Plugin.BluetoothLE.Internals
             try
             {
                 this.running = true;
-                var ts = CrossBleAdapter.PauseBetweenInvocations;
+                var ts = CrossBleAdapter.AndroidConfiguration.PauseBetweenInvocations;
                 while (this.Actions.TryDequeue(out Func<Task> task) && this.running)
                 {
                     await task();

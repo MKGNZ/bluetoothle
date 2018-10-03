@@ -32,7 +32,7 @@ namespace Plugin.BluetoothLE
         {
             get
             {
-                if (CrossBleAdapter.IsServerSupported)
+                if (CrossBleAdapter.AndroidConfiguration.IsServerSupported)
                     return AdapterFeatures.All;
 
                 return AdapterFeatures.AllClient | AdapterFeatures.AllControls;
@@ -69,7 +69,7 @@ namespace Plugin.BluetoothLE
         }
 
 
-        public override IObservable<IEnumerable<IDevice>> GetConnectedDevices()
+        public override IObservable<IEnumerable<IDevice>> GetConnectedDevices(Guid? serviceUuid = null)
         {
             var devices = this.manager
                 .GetConnectedDevices(ProfileType.Gatt)
