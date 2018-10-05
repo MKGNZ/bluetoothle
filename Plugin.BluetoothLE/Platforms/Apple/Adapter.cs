@@ -48,13 +48,30 @@ namespace Plugin.BluetoothLE
         public override IObservable<IDevice> GetKnownDevice(Guid deviceId)
         {
             var peripheral = this.context.Manager.RetrievePeripheralsWithIdentifiers(deviceId.ToNSUuid()).FirstOrDefault();
+            if (peripheral == null)
+                return Observable.Return<IDevice>(null);
+
             var device = this.context.GetDevice(peripheral);
             return Observable.Return(device);
         }
 
 
         public override IObservable<IEnumerable<IDevice>> GetPairedDevices() => Observable.Return(new IDevice[0]);
-        public override IObservable<IEnumerable<IDevice>> GetConnectedDevices() => Observable.Return(this.context.GetConnectedDevices());
+
+        public override IObservable<IEnumerable<IDevice>> GetConnectedDevices(Guid? serviceUuid = null)
+        {
+            if (serviceUuid == null)
+                return Observable.Return(this.context.GetConnectedDevices().ToList());
+
+            var list = new List<IDevice>();
+            var peripherals = this.context.Manager.RetrieveConnectedPeripherals(serviceUuid.Value.ToCBUuid());
+            foreach (var peripheral in peripherals)
+            {
+                var dev = this.context.GetDevice(peripheral);
+                list.Add(dev);
+            }
+            return Observable.Return(list);
+        }
 
 
         public override IObservable<AdapterStatus> WhenStatusChanged() => this.context
