@@ -36,8 +36,17 @@ namespace Plugin.BluetoothLE
 
         public IDevice Device { get; }
         public BluetoothLEDevice NativeDevice { get; private set; }
-        public IObservable<ConnectionStatus> WhenStatusChanged() => this.connSubject.StartWith(this.Status);
-
+        public IObservable<ConnectionStatus> WhenStatusChanged()
+        {
+            if (this.NativeDevice != null)
+            {
+                // Ensure we don't end up being triggered multiple times by the event (it is tottaly leagal to call -= even it there is no previous +=)
+                // we hook this up in Connect() and WhenStatusChanged()
+                this.NativeDevice.ConnectionStatusChanged -= this.OnNativeConnectionStatusChanged;
+                this.NativeDevice.ConnectionStatusChanged += this.OnNativeConnectionStatusChanged;
+            }
+            return this.connSubject.StartWith(this.Status);
+        }
 
         public async Task Connect()
         {
@@ -46,6 +55,9 @@ namespace Plugin.BluetoothLE
 
             this.connSubject.OnNext(ConnectionStatus.Connecting);
             this.NativeDevice = await BluetoothLEDevice.FromBluetoothAddressAsync(this.bluetoothAddress);
+            // Ensure we don't end up being triggered multiple times by the event (it is tottaly leagal to call -= even it there is no previous +=)
+            // we hook this up in Connect() and WhenStatusChanged()
+            this.NativeDevice.ConnectionStatusChanged -= this.OnNativeConnectionStatusChanged;
             this.NativeDevice.ConnectionStatusChanged += this.OnNativeConnectionStatusChanged;
             await this.NativeDevice.GetGattServicesAsync(BluetoothCacheMode.Uncached); // HACK: kick the connection on
         }
