@@ -1,5 +1,16 @@
 # CHANGE LOG
 
+## 6.2.6
+* [cleanup] Remove dependency on Acr.Core
+
+## 6.2.5
+* [fix][android][server] Additional fix to notification
+
+## 6.2.4
+* [android][advertising] Device name is now a settable property - false by default
+* [android][advertising] IsConnectable is now a settable property - true by default
+* [fix][android][server] Notification descriptor will now write back if a response is needed for notification subscriptions
+
 ## 6.2.3
 * [fix][ios] CBPeripheralManager restoration is now enabled by default and requires no user setting
 * [fix][ios] WriteWithoutResponse shouldn't be swapping to write
